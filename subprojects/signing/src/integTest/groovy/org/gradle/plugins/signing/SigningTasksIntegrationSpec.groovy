@@ -18,6 +18,7 @@ package org.gradle.plugins.signing
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.plugins.signing.signatory.internal.gnupg.GnupgSignatoryProvider
 import org.gradle.plugins.signing.signatory.pgp.PgpSignatoryProvider
+import org.gradle.util.Requires
 import spock.lang.IgnoreIf
 import spock.lang.Unroll
 
@@ -85,6 +86,7 @@ class SigningTasksIntegrationSpec extends SigningIntegrationSpec {
         [":signJar", ":signJavadocJar", ":signSourcesJar"].every { it in skippedTasks }
     }
 
+    @Requires(adhoc = { GpgCmdFixture.getAvailableGpg() != null })
     def "out-of-date when signatory changes"() {
         given:
         def originalSignMethod = signMethod
@@ -142,7 +144,6 @@ class SigningTasksIntegrationSpec extends SigningIntegrationSpec {
         ":signJar" in nonSkippedTasks
 
         when:
-        setupGpgCmd()
         buildFile << """
             signing {
                 signatureTypes.defaultType = 'sig'
