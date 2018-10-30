@@ -16,6 +16,7 @@
 
 package org.gradle.test.fixtures.server.http
 
+
 import org.eclipse.jetty.security.Authenticator
 import org.eclipse.jetty.security.ConstraintMapping
 import org.eclipse.jetty.security.ConstraintSecurityHandler
@@ -64,10 +65,19 @@ enum AuthScheme {
         @Override
         protected Authenticator getAuthenticator() {
             return new BasicAuthenticator() {
+                class HideUnauthorizedServletResponse {
+                    @Delegate HttpServletResponse delegate
+
+                    void sendError(int sc) throws IOException {
+                        if (HttpServletResponse.SC_UNAUTHORIZED == sc) {
+                            delegate.sendError(HttpServletResponse.SC_NOT_FOUND)
+                        }
+                    }
+                }
+
                 @Override
                 Authentication validateRequest(ServletRequest req, ServletResponse res, boolean mandatory) throws ServerAuthException {
-                    ((HttpServletResponse)res).sendError(HttpServletResponse.SC_NOT_FOUND)
-                    return Authentication.SEND_FAILURE
+                    return super.validateRequest(req, new HideUnauthorizedServletResponse(delegate: res), mandatory)
                 }
             }
         }

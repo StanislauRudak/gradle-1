@@ -19,21 +19,18 @@ package org.gradle.test.fixtures.server.http
 import jcifs.http.NtlmSsp
 import jcifs.smb.NtlmPasswordAuthentication
 import org.eclipse.jetty.http.HttpHeader
-import org.eclipse.jetty.security.AbstractUserAuthentication
 import org.eclipse.jetty.security.Authenticator
-import org.eclipse.jetty.security.DefaultUserIdentity
 import org.eclipse.jetty.security.ServerAuthException
 import org.eclipse.jetty.security.UserAuthentication
 import org.eclipse.jetty.server.Authentication
 import org.eclipse.jetty.server.Response
+import org.eclipse.jetty.server.UserIdentity
 import org.eclipse.jetty.util.security.Credential
 
-import javax.security.auth.Subject
 import javax.servlet.ServletRequest
 import javax.servlet.ServletResponse
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
-import java.security.Principal
 
 class NtlmAuthenticator implements Authenticator {
     static final String NTLM_AUTH_METHOD = 'NTLM'
@@ -49,51 +46,39 @@ class NtlmAuthenticator implements Authenticator {
 
     }
 
+    private NtlmConnectionAuthentication connectionAuth
+
     @Override
     Authentication validateRequest(ServletRequest request, ServletResponse response, boolean mandatory) throws ServerAuthException {
-
-        NtlmConnectionAuthentication connectionAuth = (NtlmConnectionAuthentication)request.getAttribute("connectionAuth")
+//        NtlmConnectionAuthentication connectionAuth = (NtlmConnectionAuthentication)request.getAttribute("connectionAuth")
 
         if (connectionAuth == null) {
             connectionAuth = new NtlmConnectionAuthentication(challenge: new byte[8])
             new Random().nextBytes(connectionAuth.challenge)
 
-            request.setAttribute("connectionAuth", connectionAuth)
+//                ((HttpServletRequest)request).servletContext.setAttribute("connectionAuth", connectionAuth)
         }
 
         if (connectionAuth.authenticated) {
-            request.authType = authMethod
-            request.userPrincipal = connectionAuth.principal
-
-            return new UserAuthentication(authMethod, new DefaultUserIdentity(new Subject(), connectionAuth.principal, AuthScheme.AuthSchemeHandler.ROLES))
+            return new UserAuthentication(authMethod, connectionAuth.userIdentity)
         } else {
-            NtlmPasswordAuthentication authentication = NtlmSsp.authenticate((HttpServletRequest)request, (HttpServletResponse)response, connectionAuth.challenge)
+            NtlmPasswordAuthentication authentication = NtlmSsp.authenticate((HttpServletRequest) request, (HttpServletResponse) response, connectionAuth.challenge)
 
             if (authentication != null) {
-                Principal principal = realm.authenticate(authentication.username, new TestNtlmCredentials(authentication, connectionAuth.challenge), request)
+                UserIdentity userIdentity = configuration.loginService.login(authentication.username, new TestNtlmCredentials(authentication, connectionAuth.challenge), request)
 
-                if (principal != null) {
-                    request.authType = authMethod
-                    request.userPrincipal = principal
-                    connectionAuth.principal = principal
+                if (userIdentity != null) {
+                    connectionAuth.userIdentity = userIdentity
 
-                    return new UserAuthentication(authMethod, new DefaultUserIdentity(new Subject(), connectionAuth.principal, AuthScheme.AuthSchemeHandler.ROLES))
-//                    return principal
+                    return new UserAuthentication(authMethod, userIdentity)
                 } else {
-                    println "WHAT IS GOING ON"
-                    badCredentials((Response)response)
-                    return Authentication.SEND_CONTINUE
+                    badCredentials((Response) response)
+
+                    return Authentication.SEND_FAILURE
                 }
             }
         }
-
-
-
-//        NtlmConnectionAuthentication connectionAuth = new NtlmConnectionAuthentication(challenge: new byte[8])
-//        new Random().nextBytes(connectionAuth.challenge)
-//
-//        NtlmPasswordAuthentication authentication = NtlmSsp.authenticate((HttpServletRequest)request, (HttpServletResponse)response, connectionAuth.challenge)
-//        return authentication
+        return Authentication.SEND_SUCCESS
     }
 
     @Override
@@ -107,7 +92,6 @@ class NtlmAuthenticator implements Authenticator {
     }
 
     private void badCredentials(Response response) {
-        println "When To France"
         response.setHeader(HttpHeader.WWW_AUTHENTICATE, authMethod)
         response.sendError(HttpServletResponse.SC_UNAUTHORIZED)
     }
@@ -136,8 +120,8 @@ class NtlmAuthenticator implements Authenticator {
 
     private static class NtlmConnectionAuthentication {
         byte[] challenge
-        Principal principal
+        UserIdentity userIdentity
 
-        boolean isAuthenticated() { principal != null}
+        boolean isAuthenticated() { userIdentity != null}
     }
 }
